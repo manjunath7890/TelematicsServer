@@ -79,16 +79,9 @@ const dataSchema = new mongoose.Schema({
     type: Date,
     default: () => new Date().toISOString().slice(0, 10)
   },
-  user: String,
   timestamp: {
     type: Date,
-    default: Date.now,
-    get: function (v) {
-      const offset = 5.5 * 60 * 60 * 1000;
-      const istTime = new Date(v.getTime() + offset);
-      return istTime;
-    },    
-  },  
+  },
 });
 
 dataSchema.set('toJSON', { getters: true });

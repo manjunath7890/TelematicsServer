@@ -33,71 +33,84 @@ router.get("/", (req, res) => {
   res.send("hello router");
 });
 
-// client.on("message", async (topic, message) => {
-//   let messageString = message.toString();
-//   messageString = messageString.replace(/\\+/g, "");
-//   let messageObject;
+client.on("message", async (topic, message) => {
+  let messageString = message.toString();
+  messageString = messageString.replace(/\\+/g, "");
+  let messageObject;
   
-//   try {
-//     messageObject = JSON.parse(messageString);
-//   } catch (error) {
-//     console.error("Error parsing JSON:", error);
-//     return;
-//   }
+  try {
+    messageObject = JSON.parse(messageString);
 
-//   if (topic === "vehicle_vcu_data") {
-//     try {
-//       const data = new Data(messageObject);
-//       await data.save();
-//       console.log("Data saved");
-//     } catch (error) {
-//       console.error("Error saving data:", error);
-//     }
-//   }
+  } catch (error) {
+    console.error("Error parsing JSON:", error);
+    return;
+  }
 
-//   if (topic === "vehicle_vcu_switch_request") {
-//     const responseTopic = "vehicle_vcu_switch_response";
-//     const vehicleId = messageObject.var2;
-//     // console.log(vehicleId);
+  if (topic === "vehicle_vcu_data") {
+    try {
+
+
+      const currentUTCDate = new Date();
+
+      const istTimestamp = new Date(currentUTCDate.getTime() + 5.5 * 60 * 60 * 1000);
+
+      const dataToInsert = {
+        ...messageObject,
+        timestamp: istTimestamp, 
+      };
+
+      const data = new Data(dataToInsert);
+      await data.save();
+
+      console.log("Data saved");
+    } catch (error) {
+      console.error("Error saving data:", error);
+    }
+  }
+
+  if (topic === "vehicle_vcu_switch_request") {
+    const responseTopic = "vehicle_vcu_switch_response";
+    const vehicleId = messageObject.var2;
+    // console.log(vehicleId);
     
-//     SwitchData.findOne({ var2: vehicleId })
-//       .sort("-timestamp")
-//       .then((data) => {
-//         if (data) {
-//           // Convert the Mongoose model instance to a plain object and then to a JSON string
-//           const dataToPublish = JSON.stringify(data.var1);
-//           console.log(data.var1)
-//           client.publish(responseTopic, dataToPublish, { qos: 1 }, (error) => {
-//             if (error) {
-//               console.error("Failed to publish message:", error);
-//             } else {
-//               console.log(`Message published to topic "${responseTopic}"`);
-//             }
-//           });
-//         } else {
-//           console.error("No data found in the database");
-//         }
-//       })
-//       .catch((err) => {
-//         console.error("Failed to fetch message from database:", err);
-//       });
-//   }
-// });
+    SwitchData.findOne({ var2: vehicleId })
+      .sort("-timestamp")
+      .then((data) => {
+        if (data) {
+          // Convert the Mongoose model instance to a plain object and then to a JSON string
+          const dataToPublish = JSON.stringify(data.var1);
+          console.log(data.var1)
+          client.publish(responseTopic, dataToPublish, { qos: 1 }, (error) => {
+            if (error) {
+              console.error("Failed to publish message:", error);
+            } else {
+              console.log(`Message published to topic "${responseTopic}"`);
+            }
+          });
+        } else {
+          console.error("No data found in the database");
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch message from database:", err);
+      });
+  }
+});
 
 
 
 
-// client.on('error', (err) => {
-//   console.error('MQTT connection error:', err);
-// });
+client.on('error', (err) => {
+  console.error('MQTT connection error:', err);
+});
 
-// client.on('reconnect', () => {
-//   console.log('Reconnecting to MQTT broker...');
-// });
+client.on('reconnect', () => {
+  console.log('Reconnecting to MQTT broker...');
+});
 
-// client.on('close', () => {
-//   console.log('MQTT connection closed');
-// });
+client.on('close', () => {
+  console.log('MQTT connection closed');
+});
 
 router.get('/map-api/token', async (req, res) => {
   try {
@@ -133,24 +146,38 @@ router.get('/getdata', (req, res) => {
       } else {
         res.status(404).json({ error: 'No data found' });
       }
-    })
+    }) 
     .catch((err) => {
       res.status(500).json({ error: err });
     });
 });
 
 router.post("/postdata", async (req, res) => {
-  res.json(req.body);
+  
 
   try {
     if (req.body) {
-      const data = new Data(req.body);
+
+      const currentUTCDate = new Date();
+
+      const istTimestamp = new Date(currentUTCDate.getTime() + 5.5 * 60 * 60 * 1000);
+
+      const dataToInsert = {
+        ...req.body,
+        timestamp: istTimestamp,  
+      };
+
+      const data = new Data(dataToInsert);
       await data.save();
+      res.json(dataToInsert);
     }
+    
   } catch (err) {
     console.log(err);
+    res.status(500).json({ error: 'An error occurred while saving the data' });
   }
 });
+
 
 router.post("/signup", async (req, res) => {
 
@@ -175,37 +202,27 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-router.post("/analytics/form", async (req, res) => {
-  const reportData = req.body;
+router.get("/api/documents", async (req, res) => {
+  const { fileName, userName } = req.query;
+
   try {
-    const newReport = await Analytics.findOne({ 
-      'date': reportData.date, 
-      'vehicleId': reportData.vehicleId 
-    });
-    
 
-    if (newReport) {
-      return res.status(401).send({ message: "already sent" });
+    const document = await Data.findOne({
+      user: userName,
+      date: `${fileName}`, 
+    }).sort('-timestamp');
+
+    if (!document) {
+      return res.status(404).json({ error: "No document found for the given date and user." });
     }
-
-    const report = new Analytics(reportData);
-    await report.save();
-
-    return res.status(200).send({ message: "data sent successfully" });
-  } catch (err) {
-    console.log(err);
+    res.json([document]); 
+    
+  } catch (error) {
+    console.error("Error fetching data:", error);
+    res.status(500).json({ error: "Internal server error." });
   }
 });
 
-router.get('/analytics/data', async(req, res) => {
-  const {date, vehicleId} = req.query;
-  try{
-    const data = await Analytics.findOne({date, vehicleId}).limit(1);
-    res.json(data);
-  }catch(error){
-     console.log(error);
-  }
-});
 
   router.post("/register", async (req, res) => {
   const { vehicleNo, vehicleId, name, motorNo, chassiNo, batteryId, accessToken, financeToken } = req.body;
@@ -461,13 +478,15 @@ router.post("/postinput", async (req, res) => {
 
 router.get("/api/brush", async (req, res) => {
   const { fileName, userName } = req.query;
+
   const data = await getDocument(fileName, userName);
   res.json(data);
 });
 
 const getDocument = async (date, user) => {
+
   try {
-    const data = await Data.find({ date: `${date}`, user: user }).limit(100000);
+    const data = await Data.find({ date: date, user: user });
     return data;
   } catch (error) {
     console.error(error);
@@ -514,21 +533,14 @@ const getDataDocument = async (date, user, startTime, endTime) => {
     const startTimeUTC = new Date(`${date}T${startTime}:00Z`);
     const endTimeUTC = new Date(`${date}T${endTime}:00Z`);
 
-    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
-
-    const startTimeAdjusted = new Date(startTimeUTC.getTime() - IST_OFFSET);
-    const endTimeAdjusted = new Date(endTimeUTC.getTime() - IST_OFFSET);
-
-    console.log("Adjusted Start Time: ", startTimeAdjusted);
-    console.log("Adjusted End Time: ", endTimeAdjusted);
+    const startTimeAdjusted = new Date(startTimeUTC.getTime());
+    const endTimeAdjusted = new Date(endTimeUTC.getTime());
 
     const data = await Data.find({
       date: date, 
       user: user, 
       timestamp: { $gte: startTimeAdjusted, $lte: endTimeAdjusted },
     }).sort({ timestamp: 1 }).limit(100000);
-
-    console.log(date)
 
     return data;
   } catch (error) {
