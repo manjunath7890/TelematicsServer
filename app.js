@@ -1,9 +1,7 @@
 const cors = require('cors');
 const dotenv = require('dotenv');
 const express = require('express');
-// const expressWs = require('express-ws');
 const app = express();
-// expressWs(app);
 
 const bodyParser = require('body-parser');
 app.use(cors());

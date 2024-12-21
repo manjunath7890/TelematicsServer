@@ -1,29 +1,27 @@
 const express = require("express");
-const cors = require('cors');
+const cors = require("cors");
 const expressWs = require("express-ws");
-const fetch = require('node-fetch');
-const nodemailer = require('nodemailer');
+const fetch = require("node-fetch");
+const nodemailer = require("nodemailer");
 const router = express.Router();
 expressWs(router);
 
 router.use(cors());
-
 
 require("../db doc/atlas_conn");
 const User = require("../model/userSchema");
 const Vehicle = require("../model/registerSchema");
 const Data = require("../model/dataSchema");
 const SwitchData = require("../model/inputSchema");
-const Analytics = require("../model/analyticsSchema");
 const VehicleParts = require("../model/vehicleSchema");
 
 const client = require("../db doc/mqtt_conn");
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Use your email service provider
+  service: "gmail",
   auth: {
-    user: 'AltenerSolutions2023@gmail.com',
-    pass: 'eglp flfk ayiz nzsn',
+    user: "AltenerSolutions2023@gmail.com",
+    pass: "eglp flfk ayiz nzsn",
   },
 });
 
@@ -37,10 +35,9 @@ client.on("message", async (topic, message) => {
   let messageString = message.toString();
   messageString = messageString.replace(/\\+/g, "");
   let messageObject;
-  
+
   try {
     messageObject = JSON.parse(messageString);
-
   } catch (error) {
     console.error("Error parsing JSON:", error);
     return;
@@ -48,15 +45,15 @@ client.on("message", async (topic, message) => {
 
   if (topic === "vehicle_vcu_data") {
     try {
-
-
       const currentUTCDate = new Date();
 
-      const istTimestamp = new Date(currentUTCDate.getTime() + 5.5 * 60 * 60 * 1000);
+      const istTimestamp = new Date(
+        currentUTCDate.getTime() + 5.5 * 60 * 60 * 1000
+      );
 
       const dataToInsert = {
         ...messageObject,
-        timestamp: istTimestamp, 
+        timestamp: istTimestamp,
       };
 
       const data = new Data(dataToInsert);
@@ -71,15 +68,13 @@ client.on("message", async (topic, message) => {
   if (topic === "vehicle_vcu_switch_request") {
     const responseTopic = "vehicle_vcu_switch_response";
     const vehicleId = messageObject.var2;
-    // console.log(vehicleId);
-    
+
     SwitchData.findOne({ var2: vehicleId })
       .sort("-timestamp")
       .then((data) => {
         if (data) {
-          // Convert the Mongoose model instance to a plain object and then to a JSON string
           const dataToPublish = JSON.stringify(data.var1);
-          console.log(data.var1)
+          console.log(data.var1);
           client.publish(responseTopic, dataToPublish, { qos: 1 }, (error) => {
             if (error) {
               console.error("Failed to publish message:", error);
@@ -97,22 +92,19 @@ client.on("message", async (topic, message) => {
   }
 });
 
-
-
-
-client.on('error', (err) => {
-  console.error('MQTT connection error:', err);
+client.on("error", (err) => {
+  console.error("MQTT connection error:", err);
 });
 
-client.on('reconnect', () => {
-  console.log('Reconnecting to MQTT broker...');
+client.on("reconnect", () => {
+  console.log("Reconnecting to MQTT broker...");
 });
 
-client.on('close', () => {
-  console.log('MQTT connection closed');
+client.on("close", () => {
+  console.log("MQTT connection closed");
 });
 
-router.get('/map-api/token', async (req, res) => {
+router.get("/map-api/token", async (req, res) => {
   try {
     const response = await fetch(
       "https://outpost.mapmyindia.com/api/security/oauth/token?grant_type=client_credentials&client_id=96dHZVzsAusXufunsmHXQX3_xE8OBGDl6VenZXsIu5_TXmHzgO8Xj9RdedJCI_cDo8raZZ0Y365NdfByXGFxXA==&client_secret=lrFxI-iSEg_hu1BpgkuFEiDq75pyh7ZKFzVCynUKIsfBHyS5ODrDwFb6EllbVaCnbivb3kY7W0JKyiF3bGvqp13EgGGZuZDw",
@@ -127,61 +119,66 @@ router.get('/map-api/token', async (req, res) => {
     const data = await response.json();
     if (response.ok) {
       res.json(data);
-
     } else {
-      res.status(response.status).json({ error: 'Failed to get Map API' });
+      res.status(response.status).json({ error: "Failed to get Map API" });
     }
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.get('/getdata', (req, res) => {
-  const  userName  = req.query['user'];
-  Data.findOne({user: userName}).sort('-timestamp')
+router.get("/getdata", (req, res) => {
+  const userName = req.query["user"];
+  Data.findOne({ user: userName })
+    .sort("-timestamp")
     .then((data) => {
       if (data) {
         res.json(data);
       } else {
-        res.status(404).json({ error: 'No data found' });
+        res.status(404).json({ error: "No data found" });
       }
-    }) 
+    })
     .catch((err) => {
       res.status(500).json({ error: err });
     });
 });
 
 router.post("/postdata", async (req, res) => {
-  
-
   try {
     if (req.body) {
-
       const currentUTCDate = new Date();
 
-      const istTimestamp = new Date(currentUTCDate.getTime() + 5.5 * 60 * 60 * 1000);
+      const istTimestamp = new Date(
+        currentUTCDate.getTime() + 5.5 * 60 * 60 * 1000
+      );
 
       const dataToInsert = {
         ...req.body,
-        timestamp: istTimestamp,  
+        timestamp: istTimestamp,
       };
 
       const data = new Data(dataToInsert);
       await data.save();
       res.json(dataToInsert);
     }
-    
   } catch (err) {
     console.log(err);
-    res.status(500).json({ error: 'An error occurred while saving the data' });
+    res.status(500).json({ error: "An error occurred while saving the data" });
   }
 });
 
-
 router.post("/signup", async (req, res) => {
-
-  const { userName, role, email, contact, accessToken, dealerToken, financeToken, password } = req.body;
+  const {
+    userName,
+    role,
+    email,
+    contact,
+    accessToken,
+    dealerToken,
+    financeToken,
+    password,
+  } = req.body;
 
   try {
     const newUser = await User.findOne({ email });
@@ -191,7 +188,16 @@ router.post("/signup", async (req, res) => {
       return res.status(401).send({ message: "user already exist" });
     }
 
-    const user = new User({ userName, role, contact, email, accessToken, dealerToken, financeToken, password });
+    const user = new User({
+      userName,
+      role,
+      contact,
+      email,
+      accessToken,
+      dealerToken,
+      financeToken,
+      password,
+    });
 
     await user.save();
 
@@ -206,52 +212,69 @@ router.get("/api/documents", async (req, res) => {
   const { fileName, userName } = req.query;
 
   try {
-
     const document = await Data.findOne({
       user: userName,
-      date: `${fileName}`, 
-    }).sort('-timestamp');
+      date: `${fileName}`,
+    }).sort("-timestamp");
 
     if (!document) {
-      return res.status(404).json({ error: "No document found for the given date and user." });
+      return res
+        .status(404)
+        .json({ error: "No document found for the given date and user." });
     }
-    res.json([document]); 
-    
+    res.json([document]);
   } catch (error) {
     console.error("Error fetching data:", error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
 
-
-  router.post("/register", async (req, res) => {
-  const { vehicleNo, vehicleId, name, motorNo, chassiNo, batteryId, accessToken, financeToken } = req.body;
+router.post("/register", async (req, res) => {
+  const {
+    vehicleNo,
+    vehicleId,
+    name,
+    motorNo,
+    chassiNo,
+    batteryId,
+    accessToken,
+    financeToken,
+  } = req.body;
 
   try {
     const newVehicle = await Vehicle.findOne({ vehicleId });
 
     if (newVehicle) {
-
       return res.status(401).send({ message: "vehicle already registered" });
     }
 
-    const user = new Vehicle({ vehicleNo, vehicleId, name, motorNo, chassiNo, batteryId, accessToken, financeToken });
+    const user = new Vehicle({
+      vehicleNo,
+      vehicleId,
+      name,
+      motorNo,
+      chassiNo,
+      batteryId,
+      accessToken,
+      financeToken,
+    });
     await user.save();
 
-    return res.status(200).send({ message: "vechile registered successfully!" });
+    return res
+      .status(200)
+      .send({ message: "vechile registered successfully!" });
   } catch (err) {
     console.log(err);
   }
 });
 
-router.get('/vehicles', (req, res) => {
-
-  Vehicle.find() 
+router.get("/vehicles", (req, res) => {
+  Vehicle.find()
     .then((data) => {
       if (data && data.length > 0) {
         res.json(data);
       } else {
-        res.status(404).json({ error: 'No vehicles found' });
+        res.status(404).json({ error: "No vehicles found" });
       }
     })
     .catch((err) => {
@@ -259,14 +282,14 @@ router.get('/vehicles', (req, res) => {
     });
 });
 
-router.get('/users', (req, res) => {
-  User.find() 
+router.get("/users", (req, res) => {
+  User.find()
 
     .then((data) => {
       if (data && data.length > 0) {
         res.json(data);
       } else {
-        res.status(404).json({ error: 'No vehicles found' });
+        res.status(404).json({ error: "No vehicles found" });
       }
     })
     .catch((err) => {
@@ -274,21 +297,20 @@ router.get('/users', (req, res) => {
     });
 });
 
-router.get('/dealer/users', (req, res) => {
-
-  const { dealerToken } = req.query; 
+router.get("/dealer/users", (req, res) => {
+  const { dealerToken } = req.query;
   if (!dealerToken) {
-    return res.status(400).json({ error: 'dealerToken not provided' });
+    return res.status(400).json({ error: "dealerToken not provided" });
   }
-
 
   User.find({ dealerToken })
     .then((data) => {
       if (data && data.length > 0) {
-        res.json(data); 
-
+        res.json(data);
       } else {
-        res.status(404).json({ error: 'No users found for the provided dealerToken' });
+        res
+          .status(404)
+          .json({ error: "No users found for the provided dealerToken" });
       }
     })
     .catch((err) => {
@@ -296,22 +318,20 @@ router.get('/dealer/users', (req, res) => {
     });
 });
 
-
-router.get('/fleet/vehicles', (req, res) => {
-
-  const { accessToken } = req.query; 
+router.get("/fleet/vehicles", (req, res) => {
+  const { accessToken } = req.query;
   if (!accessToken) {
-    return res.status(400).json({ error: 'accessToken not provided' });
+    return res.status(400).json({ error: "accessToken not provided" });
   }
-
 
   Vehicle.find({ accessToken })
     .then((data) => {
       if (data && data.length > 0) {
-        res.json(data); 
-
+        res.json(data);
       } else {
-        res.status(404).json({ error: 'No vehicles found for the provided accessToken' });
+        res
+          .status(404)
+          .json({ error: "No vehicles found for the provided accessToken" });
       }
     })
     .catch((err) => {
@@ -319,21 +339,20 @@ router.get('/fleet/vehicles', (req, res) => {
     });
 });
 
-router.get('/dealer/vehicles', (req, res) => {
-
-  const { dealerToken } = req.query; 
+router.get("/dealer/vehicles", (req, res) => {
+  const { dealerToken } = req.query;
   if (!dealerToken) {
-    return res.status(400).json({ error: 'dealerToken not provided' });
+    return res.status(400).json({ error: "dealerToken not provided" });
   }
-
 
   Vehicle.find({ dealerToken })
     .then((data) => {
       if (data && data.length > 0) {
-        res.json(data); 
-
+        res.json(data);
       } else {
-        res.status(404).json({ error: 'No vehicles found for the provided dealerToken' });
+        res
+          .status(404)
+          .json({ error: "No vehicles found for the provided dealerToken" });
       }
     })
     .catch((err) => {
@@ -341,21 +360,20 @@ router.get('/dealer/vehicles', (req, res) => {
     });
 });
 
-router.get('/financer/vehicles', (req, res) => {
-
-  const { financeToken } = req.query; 
+router.get("/financer/vehicles", (req, res) => {
+  const { financeToken } = req.query;
   if (!financeToken) {
-    return res.status(400).json({ error: 'financeToken not provided' });
+    return res.status(400).json({ error: "financeToken not provided" });
   }
-
 
   Vehicle.find({ financeToken })
     .then((data) => {
       if (data && data.length > 0) {
-        res.json(data); 
-
+        res.json(data);
       } else {
-        res.status(404).json({ error: 'No vehicles found for the provided financeToken' });
+        res
+          .status(404)
+          .json({ error: "No vehicles found for the provided financeToken" });
       }
     })
     .catch((err) => {
@@ -370,19 +388,14 @@ router.post("/login", async (req, res) => {
     const user = await User.findOne({ email, password });
 
     if (user) {
-
-      res
-        .status(200)
-        .json({
-          message: "user logged successfully",
-          role: user.role,
-          accessToken: user.accessToken,
-          dealerToken: user.dealerToken,
-          financeToken: user.financeToken,
-        });
+      res.status(200).json({
+        message: "user logged successfully",
+        role: user.role,
+        accessToken: user.accessToken,
+        dealerToken: user.dealerToken,
+        financeToken: user.financeToken,
+      });
     } else {
- 
-
       res.status(401).json({ message: "Invalid email or password" });
     }
   } catch (err) {
@@ -391,7 +404,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.post('/api/forgot-password', async (req, res) => {
+router.post("/api/forgot-password", async (req, res) => {
   const { email } = req.body;
 
   try {
@@ -402,54 +415,54 @@ router.post('/api/forgot-password', async (req, res) => {
       otps[email] = otp;
 
       const mailOptions = {
-        from: 'AltenerSolutions2023@gmail.com',
+        from: "AltenerSolutions2023@gmail.com",
         to: email,
-        subject: 'Password Reset OTP',
+        subject: "Password Reset OTP",
         text: `Your OTP for password reset is ${otp}`,
       };
 
       transporter.sendMail(mailOptions, (error, info) => {
         if (error) {
           console.log(error);
-          res.status(500).json({ message: 'Error sending email' });
+          res.status(500).json({ message: "Error sending email" });
         } else {
-          console.log('Email sent: ' + info.response);
-          res.json({ message: 'OTP sent to email' });
+          console.log("Email sent: " + info.response);
+          res.json({ message: "OTP sent to email" });
         }
       });
     } else {
-      res.status(404).json({ message: 'Email not found' });
+      res.status(404).json({ message: "Email not found" });
     }
   } catch (err) {
     console.log(err);
-    res.status(500).json({ message: 'Error processing request' });
+    res.status(500).json({ message: "Error processing request" });
   }
 });
 
-router.post('/api/verify-otp', (req, res) => {
+router.post("/api/verify-otp", (req, res) => {
   const { email, otp } = req.body;
   if (otps[email] === otp) {
     delete otps[email];
-    res.json({ message: 'OTP verified' });
+    res.json({ message: "OTP verified" });
   } else {
-    res.status(400).json({ message: 'Invalid OTP' });
+    res.status(400).json({ message: "Invalid OTP" });
   }
 });
 
-router.post('/api/reset-password', async (req, res) => {
+router.post("/api/reset-password", async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await User.findOne({ email });
     if (user) {
       user.password = password;
       await user.save();
-      res.json({ message: 'Password reset successful' });
+      res.json({ message: "Password reset successful" });
     } else {
-      res.status(404).json({ message: 'Email not found' });
+      res.status(404).json({ message: "Email not found" });
     }
   } catch (err) {
     console.log(err);
-    res.status(500).json({ message: 'Error processing request' });
+    res.status(500).json({ message: "Error processing request" });
   }
 });
 
@@ -460,7 +473,7 @@ router.post("/postinput", async (req, res) => {
     let inputdata = await SwitchData.findOne({ var2: var2 });
 
     if (!inputdata) {
-      // Create a new document if none is found
+      
       inputdata = new SwitchData({ var1, var2, var3 });
       await inputdata.save();
       return res.status(201).json({ message: "Document created successfully" });
@@ -484,7 +497,6 @@ router.get("/api/brush", async (req, res) => {
 });
 
 const getDocument = async (date, user) => {
-
   try {
     const data = await Data.find({ date: date, user: user });
     return data;
@@ -514,11 +526,12 @@ router.get("/api/data", async (req, res) => {
   const { date, user, start, end } = req.query;
 
   try {
-
-    const datePart = date; 
+    const datePart = date;
     const parsedDate = new Date(datePart);
     if (isNaN(parsedDate.getTime())) {
-      return res.status(400).json({ error: "Invalid date format in fileName." });
+      return res
+        .status(400)
+        .json({ error: "Invalid date format in fileName." });
     }
     const data = await getDataDocument(datePart, user, start, end);
     res.json(data);
@@ -537,10 +550,12 @@ const getDataDocument = async (date, user, startTime, endTime) => {
     const endTimeAdjusted = new Date(endTimeUTC.getTime());
 
     const data = await Data.find({
-      date: date, 
-      user: user, 
+      date: date,
+      user: user,
       timestamp: { $gte: startTimeAdjusted, $lte: endTimeAdjusted },
-    }).sort({ timestamp: 1 }).limit(100000);
+    })
+      .sort({ timestamp: 1 })
+      .limit(100000);
 
     return data;
   } catch (error) {
@@ -549,179 +564,179 @@ const getDataDocument = async (date, user, startTime, endTime) => {
   }
 };
 
-
 router.delete("/delete/data", async (req, res) => {
   const { user, start, end } = req.query;
 
   try {
-    // Validate and parse dates
-    // const startDate = dayjs(start, "DD-MM-YYYY").startOf("day").toDate();
-    // const endDate = dayjs(end, "DD-MM-YYYY").endOf("day").toDate();
-
-    // // Check for invalid dates
-    // if (!startDate || !endDate || !dayjs(startDate).isValid() || !dayjs(endDate).isValid()) {
-    //   return res.status(400).json({ error: "Invalid date format. Use DD-MM-YYYY." });
-    // }
 
     const query = {
-      user: user, 
-      date: { $gte: start, $lte: end }, 
+      user: user,
+      date: { $gte: start, $lte: end },
     };
 
     const result = await Data.deleteMany(query);
 
-    res.json({ message: "Data deleted successfully", deletedCount: result.deletedCount });
+    res.json({
+      message: "Data deleted successfully",
+      deletedCount: result.deletedCount,
+    });
   } catch (error) {
     console.error("Error deleting data:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-
-router.delete('/user/delete/:id', async (req, res) => {
+router.delete("/user/delete/:id", async (req, res) => {
   try {
     const id = req.params.id;
     const result = await User.deleteOne({ email: id });
     if (result.deletedCount === 1) {
-      res.status(200).send({ message: 'Document deleted successfully' });
+      res.status(200).send({ message: "Document deleted successfully" });
     } else {
-      res.status(404).send({ message: 'Document not found' });
+      res.status(404).send({ message: "Document not found" });
     }
   } catch (error) {
-    res.status(500).send({ message: 'Error deleting document', error });
+    res.status(500).send({ message: "Error deleting document", error });
   }
 });
 
-router.delete('/vehicle/delete/:id', async (req, res) => {
+router.delete("/vehicle/delete/:id", async (req, res) => {
   try {
     const id = req.params.id;
     const result = await Vehicle.deleteOne({ vehicleId: id });
     if (result.deletedCount === 1) {
-      res.status(200).send({ message: 'Document deleted successfully' });
+      res.status(200).send({ message: "Document deleted successfully" });
     } else {
-      res.status(404).send({ message: 'Document not found' });
+      res.status(404).send({ message: "Document not found" });
     }
   } catch (error) {
-    res.status(500).send({ message: 'Error deleting document', error });
+    res.status(500).send({ message: "Error deleting document", error });
   }
 });
 
-router.put('/user/update/:email', async (req, res) => {
+router.put("/user/update/:email", async (req, res) => {
   const { email } = req.params;
   const updatedUser = req.body;
 
   try {
-    const user = await User.findOneAndUpdate({ email }, updatedUser, { new: true });
+    const user = await User.findOneAndUpdate({ email }, updatedUser, {
+      new: true,
+    });
     if (user) {
-      res.json({ message: 'User updated successfully', user });
+      res.json({ message: "User updated successfully", user });
     } else {
-      res.status(404).json({ message: 'User not found' });
+      res.status(404).json({ message: "User not found" });
     }
   } catch (error) {
-    console.error('Error updating user:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error updating user:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
-router.put('/vehicle/update/:id', async (req, res) => {
+router.put("/vehicle/update/:id", async (req, res) => {
   const { id } = req.params;
   const updatedVehicle = req.body;
 
   try {
-    const vehicle = await Vehicle.findOneAndUpdate({ vehicleId: id }, updatedVehicle, { new: true });
+    const vehicle = await Vehicle.findOneAndUpdate(
+      { vehicleId: id },
+      updatedVehicle,
+      { new: true }
+    );
     if (vehicle) {
-      res.json({ message: 'vehicle updated successfully', vehicle });
-      console.log('updated')
+      res.json({ message: "vehicle updated successfully", vehicle });
+      console.log("updated");
     } else {
-      res.status(404).json({ message: 'vehicle not found' });
+      res.status(404).json({ message: "vehicle not found" });
     }
   } catch (error) {
-    console.error('Error updating vehicle:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error updating vehicle:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
-router.post('/put/vehicleparts', async (req, res) => {
+router.post("/put/vehicleparts", async (req, res) => {
   const { chassisNumber } = req.body;
   try {
-
     const existingVehicle = await VehicleParts.findOne({ chassisNumber });
     if (existingVehicle) {
-
       await VehicleParts.updateOne({ chassisNumber }, req.body);
-      res.status(200).json({ message: 'Vehicle updated successfully' });
+      res.status(200).json({ message: "Vehicle updated successfully" });
     } else {
-
       const newVehicle = new VehicleParts(req.body);
       await newVehicle.save();
-      res.status(201).json({ message: 'Vehicle created successfully' });
+      res.status(201).json({ message: "Vehicle created successfully" });
     }
   } catch (error) {
-    console.error('Error creating/updating vehicle:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error creating/updating vehicle:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
-router.get('/get/vehicleparts/:chassisnumber', async (req, res) => {
+router.get("/get/vehicleparts/:chassisnumber", async (req, res) => {
   const { chassisnumber } = req.params;
   try {
-    // Find the vehicle by chassis number
-    const existingVehicle = await VehicleParts.findOne({ chassisNumber: chassisnumber });
+
+    const existingVehicle = await VehicleParts.findOne({
+      chassisNumber: chassisnumber,
+    });
     if (!existingVehicle) {
-      return res.status(404).json({ message: 'Vehicle not found' });
+      return res.status(404).json({ message: "Vehicle not found" });
     }
 
-    // Group parts by partId and get the latest part for each partId
     const partsMap = new Map();
-    existingVehicle.parts.forEach(part => {
+    existingVehicle.parts.forEach((part) => {
       const existingPart = partsMap.get(part.partId);
-      if (!existingPart || new Date(part.dateInstalled) > new Date(existingPart.dateInstalled)) {
+      if (
+        !existingPart ||
+        new Date(part.dateInstalled) > new Date(existingPart.dateInstalled)
+      ) {
         partsMap.set(part.partId, part);
       }
     });
 
-    // Get the latest parts as an array
     const latestParts = Array.from(partsMap.values());
 
-    // Return the vehicle details with the filtered parts
     res.status(200).json({ ...existingVehicle._doc, parts: latestParts });
   } catch (error) {
-    console.error('Error fetching vehicle data:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error fetching vehicle data:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
+router.delete(
+  "/delete/vehicleparts/:chassisNumber/:partId",
+  async (req, res) => {
+    try {
+      const { chassisNumber, partId } = req.params;
+      const vehicle = await VehicleParts.findOne({ chassisNumber });
 
-router.delete('/delete/vehicleparts/:chassisNumber/:partId', async (req, res) => {
-  try {
-    const { chassisNumber, partId } = req.params;
-    const vehicle = await VehicleParts.findOne({ chassisNumber });
-
-    if (vehicle) {
-      vehicle.parts = vehicle.parts.filter(part => part.partId !== partId);
-      await vehicle.save();
-      res.status(200).json({ message: 'Part deleted successfully' });
-    } else {
-      res.status(404).json({ message: 'chassis number not found' });
+      if (vehicle) {
+        vehicle.parts = vehicle.parts.filter((part) => part.partId !== partId);
+        await vehicle.save();
+        res.status(200).json({ message: "Part deleted successfully" });
+      } else {
+        res.status(404).json({ message: "chassis number not found" });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete the part", error });
     }
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to delete the part', error });
   }
-});
+);
 
-router.put('/edit/vehicleparts/:chassisNumber/:partId', async (req, res) => {
+router.put("/edit/vehicleparts/:chassisNumber/:partId", async (req, res) => {
   try {
     const { chassisNumber, partId } = req.params;
     const updatedPart = req.body;
 
     const vehicle = await VehicleParts.findOne({ chassisNumber });
     if (!vehicle) {
-      return res.status(404).send('Vehicle not found');
+      return res.status(404).send("Vehicle not found");
     }
 
-    const partIndex = vehicle.parts.findIndex(part => part.partId === partId);
+    const partIndex = vehicle.parts.findIndex((part) => part.partId === partId);
     if (partIndex === -1) {
-      return res.status(404).send('Part not found');
+      return res.status(404).send("Part not found");
     }
 
     vehicle.parts[partIndex] = { ...vehicle.parts[partIndex], ...updatedPart };
@@ -733,28 +748,26 @@ router.put('/edit/vehicleparts/:chassisNumber/:partId', async (req, res) => {
   }
 });
 
-router.get('/replace/vehicleparts/:chassisNumber/:partId', async (req, res) => {
+router.get("/replace/vehicleparts/:chassisNumber/:partId", async (req, res) => {
   try {
     const { chassisNumber, partId } = req.params;
 
-    // Find the vehicle by chassis number
     const vehicle = await VehicleParts.findOne({ chassisNumber });
     if (!vehicle) {
-      return res.status(404).send('Vehicle not found');
+      return res.status(404).send("Vehicle not found");
     }
 
-    // Find all parts with the specified partId
-    const partsWithSameId = vehicle.parts.filter(part => part.partId === partId);
+    const partsWithSameId = vehicle.parts.filter(
+      (part) => part.partId === partId
+    );
     if (partsWithSameId.length === 0) {
-      return res.status(404).send('No parts found with the specified partId');
+      return res.status(404).send("No parts found with the specified partId");
     }
 
-    // Send the filtered parts in the response
     res.send(partsWithSameId);
   } catch (error) {
     res.status(500).send(error.message);
   }
 });
-
 
 module.exports = router;
