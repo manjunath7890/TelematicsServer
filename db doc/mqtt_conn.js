@@ -6,7 +6,7 @@ const mqttUsername = 'emqx';
 const mqttPassword = 'public'; 
 
 const mqttOptions = {
-  clientId: 'aspll_mqtt_client', 
+  clientId: 'asplll_mqtt_client', 
   clean: true, 
   connectTimeout: 4000, 
   reconnectPeriod: 1000, 
