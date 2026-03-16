@@ -1,12 +1,12 @@
 const mqtt = require('mqtt');
 
-const mqttBrokerUrl = 'mqtt://broker.emqx.io';
+const mqttBrokerUrl = 'mqtt://localhost';
 
-const mqttUsername = 'emqx'; 
-const mqttPassword = 'public'; 
+const mqttUsername = ''; 
+const mqttPassword = ''; 
 
 const mqttOptions = {
-  clientId: 'asplll_mqtt_client', 
+  clientId: 'aspl_mosquitto_client', 
   clean: true, 
   connectTimeout: 4000, 
   reconnectPeriod: 1000, 
@@ -20,7 +20,7 @@ const client = mqtt.connect(mqttBrokerUrl, mqttOptions);
 client.on('connect', () => {
   console.log('Connected to MQTT broker');
 
-  const topics = ['vehicle_vcu_data', 'vehicle_vcu_switch_request'];
+  const topics = ['vehicle_vcu_data', 'vehicle_vcu_switch_request', 'user'];
 
   topics.forEach((topic) => {
     client.subscribe(topic, (err) => {

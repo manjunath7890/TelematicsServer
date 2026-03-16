@@ -1,10 +1,10 @@
 const express = require("express");
 const cors = require("cors");
-const expressWs = require("express-ws");
+// const expressWs = require("express-ws");
 const fetch = require("node-fetch");
 const nodemailer = require("nodemailer");
 const router = express.Router();
-expressWs(router);
+// expressWs(router);
 
 router.use(cors());
 
@@ -14,6 +14,7 @@ const Vehicle = require("../model/registerSchema");
 const Data = require("../model/dataSchema");
 const SwitchData = require("../model/inputSchema");
 const VehicleParts = require("../model/vehicleSchema");
+const FaultCode = require("../model/faultCodeSchema");
 
 const client = require("../db doc/mqtt_conn");
 
@@ -28,7 +29,7 @@ const transporter = nodemailer.createTransport({
 let otps = {};
 
 router.get("/", (req, res) => {
-  res.send("hello router");
+  res.send("server is running ..........");
 });
 
 client.on("message", async (topic, message) => {
@@ -38,10 +39,12 @@ client.on("message", async (topic, message) => {
 
   try {
     messageObject = JSON.parse(messageString);
+    // console.log(topic, messageString);
   } catch (error) {
     console.error("Error parsing JSON:", error);
     return;
   }
+  // });
 
   if (topic === "vehicle_vcu_data") {
     try {
@@ -56,6 +59,7 @@ client.on("message", async (topic, message) => {
         timestamp: istTimestamp,
       };
 
+      console.log(dataToInsert);
       const data = new Data(dataToInsert);
       await data.save();
 
@@ -63,32 +67,6 @@ client.on("message", async (topic, message) => {
     } catch (error) {
       console.error("Error saving data:", error);
     }
-  }
-
-  if (topic === "vehicle_vcu_switch_request") {
-    const responseTopic = "vehicle_vcu_switch_response";
-    const vehicleId = messageObject.var2;
-
-    SwitchData.findOne({ var2: vehicleId })
-      .sort("-timestamp")
-      .then((data) => {
-        if (data) {
-          const dataToPublish = JSON.stringify(data.var1);
-          console.log(data.var1);
-          client.publish(responseTopic, dataToPublish, { qos: 1 }, (error) => {
-            if (error) {
-              console.error("Failed to publish message:", error);
-            } else {
-              console.log(`Message published to topic "${responseTopic}"`);
-            }
-          });
-        } else {
-          console.error("No data found in the database");
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to fetch message from database:", err);
-      });
   }
 });
 
@@ -128,6 +106,17 @@ router.get("/map-api/token", async (req, res) => {
   }
 });
 
+router.get("/getTime", (req, res) => {
+  const currentUTCDate = new Date();
+  const hr = currentUTCDate.getHours();
+  const min = currentUTCDate.getMinutes();
+  const sec = currentUTCDate.getSeconds();
+  const year = currentUTCDate.getFullYear();
+  const month = currentUTCDate.getMonth();
+  const date = currentUTCDate.getDate();
+  res.status(200).json({ hr, min, sec, year, month, date });
+});
+
 router.get("/getdata", (req, res) => {
   const userName = req.query["user"];
   Data.findOne({ user: userName })
@@ -161,6 +150,7 @@ router.post("/postdata", async (req, res) => {
       const data = new Data(dataToInsert);
       await data.save();
       res.json(dataToInsert);
+      // console.log("Data saved", dataToInsert);
     }
   } catch (err) {
     console.log(err);
@@ -394,6 +384,9 @@ router.post("/login", async (req, res) => {
         accessToken: user.accessToken,
         dealerToken: user.dealerToken,
         financeToken: user.financeToken,
+        name: user.userName,
+        email: user.email,
+        contact: user.contact,
       });
     } else {
       res.status(401).json({ message: "Invalid email or password" });
@@ -473,7 +466,6 @@ router.post("/postinput", async (req, res) => {
     let inputdata = await SwitchData.findOne({ var2: var2 });
 
     if (!inputdata) {
-      
       inputdata = new SwitchData({ var1, var2, var3 });
       await inputdata.save();
       return res.status(201).json({ message: "Document created successfully" });
@@ -568,7 +560,6 @@ router.delete("/delete/data", async (req, res) => {
   const { user, start, end } = req.query;
 
   try {
-
     const query = {
       user: user,
       date: { $gte: start, $lte: end },
@@ -676,7 +667,6 @@ router.post("/put/vehicleparts", async (req, res) => {
 router.get("/get/vehicleparts/:chassisnumber", async (req, res) => {
   const { chassisnumber } = req.params;
   try {
-
     const existingVehicle = await VehicleParts.findOne({
       chassisNumber: chassisnumber,
     });
@@ -768,6 +758,173 @@ router.get("/replace/vehicleparts/:chassisNumber/:partId", async (req, res) => {
   } catch (error) {
     res.status(500).send(error.message);
   }
+});
+
+router.post("/faultcode", async (req, res) => {
+  try {
+    const newFaultCode = new FaultCode(req.body);
+
+    // Check if a fault code entry already exists for the same vehicleNo and date
+    const existingFaultCode = await FaultCode.findOne({
+      vehicleNo: newFaultCode.vehicleNo,
+      date: newFaultCode.date,
+    });
+
+    if (existingFaultCode) {
+      return res
+        .status(400)
+        .json({
+          message: "Fault code already exists for this vehicle and date",
+        });
+    }
+
+    // Validate that faultCode is an object
+    if (
+      typeof newFaultCode.faultCode !== "object" ||
+      newFaultCode.faultCode === null
+    ) {
+      return res.status(400).json({ message: "Fault code object is required" });
+    }
+
+    // Validate structure of the faultCode object
+    const code = newFaultCode.faultCode;
+    if (
+      typeof code.Motor !== "boolean" || // Double-check this field name
+      typeof code.Battery !== "boolean" ||
+      typeof code.Charger !== "boolean" ||
+      typeof code.Controller !== "boolean" ||
+      typeof code.DC_DCConverter !== "boolean" ||
+      typeof code.VCU !== "boolean" ||
+      typeof code.Telematics !== "boolean" ||
+      typeof code.Cluster !== "boolean" ||
+      typeof code.GearBox !== "boolean" ||
+      typeof code.GearBoxController !== "boolean" ||
+      typeof code.HeadLight !== "boolean" ||
+      typeof code.TurnIndicator !== "boolean" ||
+      typeof code.HandBrake !== "boolean" ||
+      typeof code.Brake !== "boolean" ||
+      typeof code.Accelerator !== "boolean"
+    ) {
+      return res.status(400).json({ message: "Invalid fault code format" });
+    }
+
+    // Set default values if not provided
+    newFaultCode.date = new Date(newFaultCode.date);
+    newFaultCode.dealer = newFaultCode.dealer || "Unknown Dealer";
+    newFaultCode.vehicleType =
+      newFaultCode.vehicleType || "Unknown Vehicle Type";
+    newFaultCode.motorType = newFaultCode.motorType || "Unknown Motor Type";
+    newFaultCode.batteryKW = newFaultCode.batteryKW || "Unknown Battery kWatt";
+    newFaultCode.location = newFaultCode.location || "Unknown Location";
+    newFaultCode.condition = newFaultCode.condition || "Unknown Condition";
+    newFaultCode.role = newFaultCode.role || "Unknown Role";
+    newFaultCode.accessToken =
+      newFaultCode.accessToken || "Unknown Access Token";
+    newFaultCode.dealerToken =
+      newFaultCode.dealerToken || "Unknown Dealer Token";
+    newFaultCode.financeToken =
+      newFaultCode.financeToken || "Unknown Finance Token";
+    newFaultCode.vehicleNo = newFaultCode.vehicleNo || "Unknown Vehicle Number";
+
+    await newFaultCode.save();
+
+    res.status(201).json({ message: "Fault code saved successfully" });
+  } catch (err) {
+    console.error(err);
+    res
+      .status(500)
+      .json({ error: "An error occurred while saving the fault code" });
+  }
+});
+
+router.get("/faultcode", async (req, res) => {
+  const { role, start, end, dealerToken, accessToken } = req.query;
+
+  try {
+    const query = {};
+
+    const startDate = new Date(start);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(end);
+    endDate.setHours(23, 59, 59, 999);
+
+    query.date = {
+      $gte: startDate,
+      $lte: endDate,
+    };
+
+    // Role-based filtering
+    if (role === "admin") {
+      // Admin can see all data within the date range
+    } else if (role === "dealer") {
+      if (!dealerToken) {
+        return res.status(400).json({ message: "Missing dealerToken" });
+      }
+      query.dealerToken = dealerToken;
+    } else if (role === "customer") {
+      if (!accessToken) {
+        return res.status(400).json({ message: "Missing accessToken" });
+      }
+      query.accessToken = accessToken;
+    } else {
+      return res
+        .status(403)
+        .json({ message: "Invalid role cannot access the data" });
+    }
+
+    const faultCodes = await FaultCode.find(query);
+
+    if (!faultCodes || faultCodes.length === 0) {
+      return res.status(404).json({ message: "No fault codes found" });
+    }
+
+    res.status(200).json(faultCodes);
+  } catch (err) {
+    console.error(err);
+    res
+      .status(500)
+      .json({ error: "An error occurred while fetching fault codes" });
+  }
+});
+
+router.put("/faultcode/:id", async (req, res) => {
+  const { id } = req.params;
+  const updatedFaultCode = req.body;
+
+  try {
+    const faultCode = await FaultCode.findByIdAndUpdate(id, updatedFaultCode, {
+      new: true,
+    });
+    if (faultCode) {
+      res.json({ message: "Fault code updated successfully", faultCode });
+    } else {
+      res.status(404).json({ message: "Fault code not found" });
+    }
+  } catch (error) {
+    console.error("Error updating fault code:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.delete("/faultcode/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await FaultCode.findByIdAndDelete(id);
+    if (result) {
+      res.status(200).json({ message: "Fault code deleted successfully" });
+    } else {
+      res.status(404).json({ message: "Fault code not found" });
+    }
+  } catch (error) {
+    console.error("Error deleting fault code:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.post("/postdatta", async (req, res) => {
+  console.log(req.body);
+  res.status(200).send(`message: ${req.body}`);
 });
 
 module.exports = router;
