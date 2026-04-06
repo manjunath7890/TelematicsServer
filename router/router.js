@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-// const expressWs = require("express-ws");
+const cryptojs = require('crypto-js');
 const fetch = require("node-fetch");
 const nodemailer = require("nodemailer");
 const router = express.Router();
@@ -16,7 +16,10 @@ const SwitchData = require("../model/inputSchema");
 const VehicleParts = require("../model/vehicleSchema");
 const FaultCode = require("../model/faultCodeSchema");
 
-const client = require("../db doc/mqtt_conn");
+// const client = require("../db doc/mqtt_conn");
+
+const SECRET_KEY = process.env.CRYPTO_KEY || 'telematics_secure_local_storage_key';
+
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -32,55 +35,55 @@ router.get("/", (req, res) => {
   res.send("server is running ..........");
 });
 
-client.on("message", async (topic, message) => {
-  let messageString = message.toString();
-  messageString = messageString.replace(/\\+/g, "");
-  let messageObject;
+// client.on("message", async (topic, message) => {
+//   let messageString = message.toString();
+//   messageString = messageString.replace(/\\+/g, "");
+//   let messageObject;
 
-  try {
-    messageObject = JSON.parse(messageString);
-    // console.log(topic, messageString);
-  } catch (error) {
-    console.error("Error parsing JSON:", error);
-    return;
-  }
-  // });
+//   try {
+//     messageObject = JSON.parse(messageString);
+//     // console.log(topic, messageString);
+//   } catch (error) {
+//     console.error("Error parsing JSON:", error);
+//     return;
+//   }
+//   // });
 
-  if (topic === "vehicle_vcu_data") {
-    try {
-      const currentUTCDate = new Date();
+//   if (topic === "vehicle_vcu_data") {
+//     try {
+//       const currentUTCDate = new Date();
 
-      const istTimestamp = new Date(
-        currentUTCDate.getTime() + 5.5 * 60 * 60 * 1000
-      );
+//       const istTimestamp = new Date(
+//         currentUTCDate.getTime() + 5.5 * 60 * 60 * 1000
+//       );
 
-      const dataToInsert = {
-        ...messageObject,
-        timestamp: istTimestamp,
-      };
+//       const dataToInsert = {
+//         ...messageObject,
+//         timestamp: istTimestamp,
+//       };
 
-      console.log(dataToInsert);
-      const data = new Data(dataToInsert);
-      await data.save();
+//       console.log(dataToInsert);
+//       const data = new Data(dataToInsert);
+//       await data.save();
 
-      console.log("Data saved");
-    } catch (error) {
-      console.error("Error saving data:", error);
-    }
-  }
-});
+//       console.log("Data saved");
+//     } catch (error) {
+//       console.error("Error saving data:", error);
+//     }
+//   }
+// });
 
-client.on("error", (err) => {
-  console.error("MQTT connection error:", err);
-});
+// client.on("error", (err) => {
+//   console.error("MQTT connection error:", err);
+// });
 
-client.on("reconnect", () => {
-  console.log("Reconnecting to MQTT broker...");
-});
+// client.on("reconnect", () => {
+//   console.log("Reconnecting to MQTT broker...");
+// });
 
-client.on("close", () => {
-  console.log("MQTT connection closed");
-});
+// client.on("close", () => {
+//   console.log("MQTT connection closed");
+// });
 
 router.get("/map-api/token", async (req, res) => {
   try {
@@ -371,29 +374,50 @@ router.get("/financer/vehicles", (req, res) => {
     });
 });
 
-router.post("/login", async (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-
+  console.log(email, password);
   try {
-    const user = await User.findOne({ email, password });
-
-    if (user) {
-      res.status(200).json({
-        message: "user logged successfully",
-        role: user.role,
-        accessToken: user.accessToken,
-        dealerToken: user.dealerToken,
-        financeToken: user.financeToken,
-        name: user.userName,
-        email: user.email,
-        contact: user.contact,
-      });
-    } else {
-      res.status(401).json({ message: "Invalid email or password" });
+    let decryptedPassword = password;
+    try {
+      const bytes = cryptojs.AES.decrypt(password, SECRET_KEY);
+      const originalText = bytes.toString(cryptojs.enc.Utf8);
+      if (originalText) {
+        decryptedPassword = originalText;
+      }
+    } catch (e) {
+      // Fallback: If decryption fails, it could be a plaintext password coming from Postman or an old client
     }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const isMatch = await user.comparePassword(decryptedPassword);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    if (user.hasLegacyPlaintextPassword()) {
+      user.password = decryptedPassword;
+      await user.save();
+    }
+
+    res.status(200).json({
+      message: 'User logged in successfully',
+      role: user.role,
+      accessToken: user.accessToken,
+      dealerToken: user.dealerToken,
+      financeToken: user.financeToken,
+      name: user.userName,
+      email: user.email,
+      contact: user.contact,
+    });
+    console.log("Login Success");
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "Error processing request" });
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
