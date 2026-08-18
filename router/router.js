@@ -153,7 +153,7 @@ router.post("/postdata", async (req, res) => {
       const data = new Data(dataToInsert);
       await data.save();
       res.json(dataToInsert);
-      // console.log("Data saved", dataToInsert);
+      console.log("Data saved", dataToInsert);
     }
   } catch (err) {
     console.log(err);
